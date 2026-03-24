@@ -145,6 +145,11 @@ int get_metadata_from_apps(files_t* fda, cofis_t* cda)
         strcpy(el->exec, value_buffer);
       }
 
+      if (strcmp(buffer, "GenericName") == 0 && 
+          el->description == NULL) {
+        el->description = strdup(value_buffer);
+      }
+
       cursor++;
       buffer_index = 0;
       value_buffer_index = 0;
@@ -173,6 +178,19 @@ int compare(const void *a, const void *b) {
   if (p2) return 1; 
 
   return strcmp(s1->name, s2->name); 
+}
+
+void build_lv_text(cofis_t* datas, char* list)
+{
+  for (size_t i = 0; i < datas->count; ++i) {
+    strcat(list, datas->items[i]->name); 
+    if (datas->items[i]->description) {
+      strcat(list, " (");
+      strcat(list, datas->items[i]->description);
+      strcat(list, ")");
+    }
+    strcat(list, ";");
+  }
 }
 
 int main()
@@ -210,10 +228,8 @@ int main()
 
   char* list = malloc(1 << 20);
   strcpy(list, "");
-  for (size_t i = 0; i < datas.count; ++i) {
-    strcat(list, datas.items[i]->name); 
-    strcat(list, ";");
-  }
+  build_lv_text(&datas, list);
+
   int scroll = 0;
   int active = 0;
 
@@ -241,10 +257,7 @@ int main()
     qsort(datas.items, datas.count, sizeof(cofi_element_t*), compare);
 
     strncpy(list, "", sizeof(list));
-    for (size_t i = 0; i < datas.count; ++i) {
-      strcat(list, datas.items[i]->name); 
-      strcat(list, ";");
-    }
+    build_lv_text(&datas, list);
 
     if (searched) 
       if (exec_app(datas.items[active]->exec))
@@ -264,6 +277,8 @@ int main()
   for (size_t i = 0; i < datas.count; ++i) {
     free(datas.items[i]->name); 
     free(datas.items[i]->exec); 
+    if (datas.items[i]->description) 
+      free(datas.items[i]->description);
     free(datas.items[i]);
   }
   free(datas.items);
