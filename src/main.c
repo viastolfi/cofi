@@ -35,9 +35,9 @@ typedef struct {
 int exec_app(char* name)
 {
   pid_t pid = fork();
-  char* cmd = strdup(name);
 
   if (pid == 0) {
+    char* cmd = strdup(name);
     char* arg = strchr(cmd, '%'); 
     if (arg != NULL) {
       arg--;
@@ -74,7 +74,7 @@ int get_applications_from_dir(const char* path, files_t* fda)
 
       da_append(fda, strdup(ent->d_name));
     }
-    closedir (dir);
+    closedir(dir);
   } else {
     return 0;
   }
@@ -255,14 +255,18 @@ int main()
 
   CloseWindow();
 
+  free(list);
+
   for (size_t i = 0; i < applications.count; ++i)
     free(applications.items[i]);
+  free(applications.items);
 
   for (size_t i = 0; i < datas.count; ++i) {
     free(datas.items[i]->name); 
     free(datas.items[i]->exec); 
     free(datas.items[i]);
   }
+  free(datas.items);
 
   return 0;
 }
