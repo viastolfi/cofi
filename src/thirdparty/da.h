@@ -138,6 +138,13 @@ extern "C" {
 
 #define da_foreach(Type, it, da) for(Type* it = (da)->items; it < (da)->items + (da)->count; ++it)
 
+#define da_swap(Type, da, i, j) \
+  do { \
+    Type value##i##j = (da)->items[i]; \
+    (da)->items[i] = (da)->items[j]; \
+    (da)->items[j] = value##i##j; \
+  } while(0)
+
 #define da_remove(da, i)                                                \
     do {                                                                \
         size_t j = (i);                                                 \
