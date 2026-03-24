@@ -24,6 +24,7 @@ typedef struct {
   char* description;
   char* icons;
   char* exec;
+  bool terminal;
 } cofi_element_t;
 
 typedef struct {
@@ -32,18 +33,25 @@ typedef struct {
   size_t capacity;
 } cofis_t;
 
+char* clean_exec(char* name) 
+{
+  char* cmd = strdup(name);
+  char* arg = strchr(cmd, '%');
+  if (arg != NULL) {
+    arg--;
+    *arg = '\0'; 
+  }
+
+  return cmd;
+}
+
 int exec_app(char* name)
 {
   pid_t pid = fork();
 
   if (pid == 0) {
-    char* cmd = strdup(name);
-    char* arg = strchr(cmd, '%'); 
-    if (arg != NULL) {
-      arg--;
-      *arg = '\0';  
-    }
-
+    char* cmd = clean_exec(name);
+      
     char* args[] = {cmd, NULL};
 
     execvp(args[0], args);
@@ -52,6 +60,24 @@ int exec_app(char* name)
   } else {
     return 1; 
   }
+  return 0;
+}
+
+int exec_terminal_app(char* name) 
+{
+  pid_t pid = fork();
+
+  if (pid == 0) {
+    char* cmd = clean_exec(name);
+    char* args[] = {"alacritty", "-e", cmd, NULL};  
+
+    execvp(args[0], args);
+    perror("execvp failed");
+    exit(1);
+  } else {
+    return 1; 
+  }
+
   return 0;
 }
 
@@ -148,6 +174,11 @@ int get_metadata_from_apps(files_t* fda, cofis_t* cda)
       if (strcmp(buffer, "GenericName") == 0 && 
           el->description == NULL) {
         el->description = strdup(value_buffer);
+      }
+
+      if (strcmp(buffer, "Terminal") == 0) {
+        if (strcasecmp(value_buffer, "true") == 0)
+         el->terminal = true; 
       }
 
       cursor++;
@@ -259,9 +290,14 @@ int main()
     strncpy(list, "", sizeof(list));
     build_lv_text(&datas, list);
 
-    if (searched) 
-      if (exec_app(datas.items[active]->exec))
-        close_window = true;
+    if (searched) {
+      if (datas.items[active]->terminal) {
+        exec_terminal_app(datas.items[active]->exec);     
+      } else {
+        exec_app(datas.items[active]->exec);
+      }
+      close_window = true;
+    }
 
     EndDrawing();
   }
