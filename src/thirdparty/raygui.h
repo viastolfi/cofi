@@ -760,6 +760,8 @@ RAYGUIAPI int GuiGrid(Rectangle bounds, const char *text, float spacing, int sub
 // Advance controls set
 RAYGUIAPI int GuiListView(Rectangle bounds, const char *text, int *scrollIndex, int *active);          // List View control
 RAYGUIAPI int GuiListViewEx(Rectangle bounds, const char **text, int count, int *scrollIndex, int *active, int *focus); // List View with extended parameters
+RAYGUIAPI int GuiListViewTexture(Rectangle bounds, Texture *textures, const char *text, int *scrollIndex, int *active); // List View with textures, textures count must match items count
+RAYGUIAPI int GuiListViewTextureEx(Rectangle bounds, Texture *textures, const char **text, int count, int *scrollIndex, int *active, int *focus); // List View with textures and extended parameters, textures[] must have at least count elements
 RAYGUIAPI int GuiMessageBox(Rectangle bounds, const char *title, const char *message, const char *buttons); // Message Box control, displays a message
 RAYGUIAPI int GuiTextInputBox(Rectangle bounds, const char *title, const char *message, const char *buttons, char *text, int textMaxSize, bool *secretViewActive); // Text Input Box control, ask for text, supports secret
 RAYGUIAPI int GuiColorPicker(Rectangle bounds, const char *text, Color *color);                        // Color Picker control (multiple color controls)
@@ -1505,7 +1507,7 @@ static void GuiLoadStyleFromMemory(const unsigned char *fileData, int dataSize);
 static Rectangle GetTextBounds(int control, Rectangle bounds);  // Get text bounds considering control bounds
 static const char *GetTextIcon(const char *text, int *iconId);  // Get text icon if provided and move text cursor
 
-static void GuiDrawListViewLineWithTexture(const char* text, const Texture texture, Rectangle bounds, int alignment, Color tint);
+static void GuiDrawListViewLineWithTexture(const char *text, const Texture texture, Rectangle bounds, int alignment, Color tint);
 static void GuiDrawText(const char *text, Rectangle textBounds, int alignment, Color tint);     // Gui draw text using default font
 static void GuiDrawRectangle(Rectangle rec, int borderWidth, Color borderColor, Color color);   // Gui draw rectangle using default raygui style
 
@@ -3571,161 +3573,6 @@ int GuiListView(Rectangle bounds, const char *text, int *scrollIndex, int *activ
     return result;
 }
 
-#if !defined(RAYGUI_STANDALONE)
-// List View with texture in each row
-int GuiListViewTexture(Rectangle bounds, Texture *textures, const char* items, int *scrollIndex, int *active, int *focus)
-{
-  int result = 0;
-  GuiState state = guiState;
-  const char **text= NULL;
-  int count = 0;
-
-  if (items != NULL) text = GuiTextSplit(items, ';', &count, NULL);
-
-  int itemFocused = (focus == NULL)? -1 : *focus;
-  int itemSelected = (active == NULL)? -1 : *active;
-
-  // Check if we need a scroll bar
-  bool useScrollBar = false;
-  if ((GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING))*count > bounds.height) useScrollBar = true;
-
-  // Define base item rectangle [0]
-  Rectangle itemBounds = { 0 };
-  itemBounds.x = bounds.x + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING);
-  itemBounds.y = bounds.y + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING) + GuiGetStyle(DEFAULT, BORDER_WIDTH);
-  itemBounds.width = bounds.width - 2*GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING) - GuiGetStyle(DEFAULT, BORDER_WIDTH);
-  itemBounds.height = (float)GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT);
-  if (useScrollBar) itemBounds.width -= GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH);
-
-  // Get items on the list
-  int visibleItems = (int)bounds.height/(GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING));
-  if (visibleItems > count) visibleItems = count;
-
-  int startIndex = (scrollIndex == NULL)? 0 : *scrollIndex;
-  if ((startIndex < 0) || (startIndex > (count - visibleItems))) startIndex = 0;
-  int endIndex = startIndex + visibleItems;
-
-  // Update control
-  //--------------------------------------------------------------------
-  if ((state != STATE_DISABLED) && !guiLocked && !guiControlExclusiveMode)
-  {
-    Vector2 mousePoint = GetMousePosition();
-
-    // Check mouse inside list view
-    if (CheckCollisionPointRec(mousePoint, bounds))
-    {
-      state = STATE_FOCUSED;
-
-      // Check focused and selected item
-      for (int i = 0; i < visibleItems; i++)
-      {
-        if (CheckCollisionPointRec(mousePoint, itemBounds))
-        {
-          itemFocused = startIndex + i;
-          if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-          {
-            if (itemSelected == (startIndex + i)) itemSelected = -1;
-            else itemSelected = startIndex + i;
-          }
-          break;
-        }
-
-        // Update item rectangle y position for next item
-        itemBounds.y += (GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING));
-      }
-
-      if (useScrollBar)
-      {
-        int wheelMove = (int)GetMouseWheelMove();
-        startIndex -= wheelMove;
-
-        if (startIndex < 0) startIndex = 0;
-        else if (startIndex > (count - visibleItems)) startIndex = count - visibleItems;
-
-        endIndex = startIndex + visibleItems;
-        if (endIndex > count) endIndex = count;
-      }
-    }
-    else itemFocused = -1;
-
-    // Reset item rectangle y to [0]
-    itemBounds.y = bounds.y + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING) + GuiGetStyle(DEFAULT, BORDER_WIDTH);
-  }
-  //--------------------------------------------------------------------
-
-  // Draw control
-  //--------------------------------------------------------------------
-  GuiDrawRectangle(bounds, GuiGetStyle(LISTVIEW, BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER + state*3)), GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));     // Draw background
-
-  // Draw visible items
-  for (int i = 0; ((i < visibleItems) && (text != NULL)); i++)
-  {
-    if (GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_NORMAL)) GuiDrawRectangle(itemBounds, GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_NORMAL)), BLANK);
-
-    if (state == STATE_DISABLED)
-    {
-      if ((startIndex + i) == itemSelected) GuiDrawRectangle(itemBounds, GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_DISABLED)), GetColor(GuiGetStyle(LISTVIEW, BASE_COLOR_DISABLED)));
-
-        GuiDrawListViewLineWithTexture(text[startIndex+i], textures[startIndex+i], GetTextBounds(DEFAULT, itemBounds), GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT), GetColor(GuiGetStyle(LISTVIEW, TEXT_COLOR_DISABLED)));
-    }
-    else
-    {
-      if (((startIndex + i) == itemSelected) && (active != NULL))
-      {
-        // Draw item selected
-        GuiDrawRectangle(itemBounds, GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_PRESSED)), GetColor(GuiGetStyle(LISTVIEW, BASE_COLOR_PRESSED)));
-        GuiDrawListViewLineWithTexture(text[startIndex+i], textures[startIndex+i], GetTextBounds(DEFAULT, itemBounds), GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT), GetColor(GuiGetStyle(LISTVIEW, TEXT_COLOR_PRESSED)));
-      }
-      else if (((startIndex + i) == itemFocused)) // && (focus != NULL))  // NOTE: We want items focused, despite not returned!
-      {
-        // Draw item focused
-        GuiDrawRectangle(itemBounds, GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_FOCUSED)), GetColor(GuiGetStyle(LISTVIEW, BASE_COLOR_FOCUSED)));
-        GuiDrawListViewLineWithTexture(text[startIndex+i], textures[startIndex+i], GetTextBounds(DEFAULT, itemBounds), GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT), GetColor(GuiGetStyle(LISTVIEW, TEXT_COLOR_FOCUSED)));
-      }
-      else
-      {
-        // Draw item normal (no rectangle)
-        GuiDrawListViewLineWithTexture(text[startIndex+i], textures[startIndex+i], GetTextBounds(DEFAULT, itemBounds), GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT), GetColor(GuiGetStyle(LISTVIEW, TEXT_COLOR_NORMAL)));
-      }
-    }
-
-    // Update item rectangle y position for next item
-    itemBounds.y += (GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING));
-  }
-
-  if (useScrollBar)
-  {
-    Rectangle scrollBarBounds = {
-      bounds.x + bounds.width - GuiGetStyle(LISTVIEW, BORDER_WIDTH) - GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH),
-      bounds.y + GuiGetStyle(LISTVIEW, BORDER_WIDTH), (float)GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH),
-      bounds.height - 2*GuiGetStyle(DEFAULT, BORDER_WIDTH)
-    };
-
-    // Calculate percentage of visible items and apply same percentage to scrollbar
-    float percentVisible = (float)(endIndex - startIndex)/count;
-    float sliderSize = bounds.height*percentVisible;
-
-    int prevSliderSize = GuiGetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE);   // Save default slider size
-    int prevScrollSpeed = GuiGetStyle(SCROLLBAR, SCROLL_SPEED); // Save default scroll speed
-    GuiSetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE, (int)sliderSize);            // Change slider size
-    GuiSetStyle(SCROLLBAR, SCROLL_SPEED, count - visibleItems); // Change scroll speed
-
-    startIndex = GuiScrollBar(scrollBarBounds, startIndex, 0, count - visibleItems);
-
-    GuiSetStyle(SCROLLBAR, SCROLL_SPEED, prevScrollSpeed); // Reset scroll speed to default
-    GuiSetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE, prevSliderSize); // Reset slider size to default
-  }
-  //--------------------------------------------------------------------
-
-  if (active != NULL) *active = itemSelected;
-  if (focus != NULL) *focus = itemFocused;
-  if (scrollIndex != NULL) *scrollIndex = startIndex;
-
-  return result;
-
-}
-#endif // RAYGUI_STANDALONE
-
 // List View control with extended parameters
 int GuiListViewEx(Rectangle bounds, const char **text, int count, int *scrollIndex, int *active, int *focus)
 {
@@ -3873,6 +3720,174 @@ int GuiListViewEx(Rectangle bounds, const char **text, int count, int *scrollInd
 
     return result;
 }
+
+#if !defined(RAYGUI_STANDALONE)
+// List View with texture and text in each row
+int GuiListViewTexture(Rectangle bounds, Texture *textures, const char *text, int *scrollIndex, int *active)
+{
+    int result = 0;
+    int itemCount = 0;
+    const char **items = NULL;
+
+    if (text != NULL) items = GuiTextSplit(text, ';', &itemCount, NULL);
+
+    result = GuiListViewTextureEx(bounds, textures, items, itemCount, scrollIndex, active, NULL);
+
+    return result;
+}
+
+// List View with texture and text in each row with extended parameters
+int GuiListViewTextureEx(Rectangle bounds, Texture *textures, const char **text, int count, int *scrollIndex, int *active, int *focus)
+{
+    int result = 0;
+    GuiState state = guiState;
+
+    int itemFocused = (focus == NULL)? -1 : *focus;
+    int itemSelected = (active == NULL)? -1 : *active;
+
+    // Check if we need a scroll bar
+    bool useScrollBar = false;
+    if ((GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING))*count > bounds.height) useScrollBar = true;
+
+    // Define base item rectangle [0]
+    Rectangle itemBounds = { 0 };
+    itemBounds.x = bounds.x + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING);
+    itemBounds.y = bounds.y + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING) + GuiGetStyle(DEFAULT, BORDER_WIDTH);
+    itemBounds.width = bounds.width - 2*GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING) - GuiGetStyle(DEFAULT, BORDER_WIDTH);
+    itemBounds.height = (float)GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT);
+    if (useScrollBar) itemBounds.width -= GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH);
+
+    // Get items on the list
+    int visibleItems = (int)bounds.height/(GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING));
+    if (visibleItems > count) visibleItems = count;
+
+    int startIndex = (scrollIndex == NULL)? 0 : *scrollIndex;
+    if ((startIndex < 0) || (startIndex > (count - visibleItems))) startIndex = 0;
+    int endIndex = startIndex + visibleItems;
+
+    // Update control
+    //--------------------------------------------------------------------
+    if ((state != STATE_DISABLED) && !guiLocked && !guiControlExclusiveMode)
+    {
+        Vector2 mousePoint = GetMousePosition();
+
+        // Check mouse inside list view
+        if (CheckCollisionPointRec(mousePoint, bounds))
+        {
+            state = STATE_FOCUSED;
+
+            // Check focused and selected item
+            for (int i = 0; i < visibleItems; i++)
+            {
+                if (CheckCollisionPointRec(mousePoint, itemBounds))
+                {
+                    itemFocused = startIndex + i;
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+                    {
+                        if (itemSelected == (startIndex + i)) itemSelected = -1;
+                        else itemSelected = startIndex + i;
+                    }
+                    break;
+                }
+
+                // Update item rectangle y position for next item
+                itemBounds.y += (GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING));
+            }
+
+            if (useScrollBar)
+            {
+                int wheelMove = (int)GetMouseWheelMove();
+                startIndex -= wheelMove;
+
+                if (startIndex < 0) startIndex = 0;
+                else if (startIndex > (count - visibleItems)) startIndex = count - visibleItems;
+
+                endIndex = startIndex + visibleItems;
+                if (endIndex > count) endIndex = count;
+            }
+        }
+        else itemFocused = -1;
+
+        // Reset item rectangle y to [0]
+        itemBounds.y = bounds.y + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING) + GuiGetStyle(DEFAULT, BORDER_WIDTH);
+    }
+    //--------------------------------------------------------------------
+
+    // Draw control
+    //--------------------------------------------------------------------
+    GuiDrawRectangle(bounds, GuiGetStyle(LISTVIEW, BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER + state*3)), GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));     // Draw background
+
+    // Draw visible items
+    for (int i = 0; ((i < visibleItems) && (text != NULL) && (textures != NULL)); i++)
+    {
+        if (!IsTextureValid(textures[startIndex + i])) { itemBounds.y += (GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING)); continue; }
+
+        if (GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_NORMAL)) GuiDrawRectangle(itemBounds, GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_NORMAL)), BLANK);
+
+        if (state == STATE_DISABLED)
+        {
+            if ((startIndex + i) == itemSelected)
+            {
+                GuiDrawRectangle(itemBounds, GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_DISABLED)), GetColor(GuiGetStyle(LISTVIEW, BASE_COLOR_DISABLED)));
+                GuiDrawListViewLineWithTexture(text[startIndex + i], textures[startIndex + i], GetTextBounds(DEFAULT, itemBounds), GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT), GetColor(GuiGetStyle(LISTVIEW, TEXT_COLOR_DISABLED)));
+            }
+        }
+        else
+        {
+            if (((startIndex + i) == itemSelected) && (active != NULL))
+            {
+                // Draw item selected
+                GuiDrawRectangle(itemBounds, GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_PRESSED)), GetColor(GuiGetStyle(LISTVIEW, BASE_COLOR_PRESSED)));
+                GuiDrawListViewLineWithTexture(text[startIndex + i], textures[startIndex + i], GetTextBounds(DEFAULT, itemBounds), GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT), GetColor(GuiGetStyle(LISTVIEW, TEXT_COLOR_PRESSED)));
+            }
+            else if (((startIndex + i) == itemFocused)) // && (focus != NULL))  // NOTE: We want items focused, despite not returned!
+            {
+                // Draw item focused
+                GuiDrawRectangle(itemBounds, GuiGetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH), GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_FOCUSED)), GetColor(GuiGetStyle(LISTVIEW, BASE_COLOR_FOCUSED)));
+                GuiDrawListViewLineWithTexture(text[startIndex + i], textures[startIndex + i], GetTextBounds(DEFAULT, itemBounds), GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT), GetColor(GuiGetStyle(LISTVIEW, TEXT_COLOR_FOCUSED)));
+            }
+            else
+            {
+                // Draw item normal (no rectangle)
+                GuiDrawListViewLineWithTexture(text[startIndex + i], textures[startIndex + i], GetTextBounds(DEFAULT, itemBounds), GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT), GetColor(GuiGetStyle(LISTVIEW, TEXT_COLOR_NORMAL)));
+            }
+        }
+
+        // Update item rectangle y position for next item
+        itemBounds.y += (GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT) + GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING));
+    }
+
+    if (useScrollBar)
+    {
+        Rectangle scrollBarBounds = {
+            bounds.x + bounds.width - GuiGetStyle(LISTVIEW, BORDER_WIDTH) - GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH),
+            bounds.y + GuiGetStyle(LISTVIEW, BORDER_WIDTH), (float)GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH),
+            bounds.height - 2*GuiGetStyle(DEFAULT, BORDER_WIDTH)
+        };
+
+        // Calculate percentage of visible items and apply same percentage to scrollbar
+        float percentVisible = (float)(endIndex - startIndex)/count;
+        float sliderSize = bounds.height*percentVisible;
+
+        int prevSliderSize = GuiGetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE);   // Save default slider size
+        int prevScrollSpeed = GuiGetStyle(SCROLLBAR, SCROLL_SPEED); // Save default scroll speed
+        GuiSetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE, (int)sliderSize);            // Change slider size
+        GuiSetStyle(SCROLLBAR, SCROLL_SPEED, count - visibleItems); // Change scroll speed
+
+        startIndex = GuiScrollBar(scrollBarBounds, startIndex, 0, count - visibleItems);
+
+        GuiSetStyle(SCROLLBAR, SCROLL_SPEED, prevScrollSpeed); // Reset scroll speed to default
+        GuiSetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE, prevSliderSize); // Reset slider size to default
+    }
+    //--------------------------------------------------------------------
+
+    if (active != NULL) *active = itemSelected;
+    if (focus != NULL) *focus = itemFocused;
+    if (scrollIndex != NULL) *scrollIndex = startIndex;
+
+    return result;
+}
+#endif // RAYGUI_STANDALONE
 
 // Color Panel control - Color (RGBA) variant
 int GuiColorPanel(Rectangle bounds, const char *text, Color *color)
@@ -4656,6 +4671,7 @@ void GuiLoadStyleDefault(void)
     GuiSetStyle(LISTVIEW, LIST_ITEMS_BORDER_WIDTH, 1);
     GuiSetStyle(LISTVIEW, SCROLLBAR_WIDTH, 12);
     GuiSetStyle(LISTVIEW, SCROLLBAR_SIDE, SCROLLBAR_RIGHT_SIDE);
+    GuiSetStyle(LISTVIEW, LIST_ITEMS_PADDING, 1);
     GuiSetStyle(COLORPICKER, COLOR_SELECTOR_SIZE, 8);
     GuiSetStyle(COLORPICKER, HUEBAR_WIDTH, 16);
     GuiSetStyle(COLORPICKER, HUEBAR_PADDING, 8);
@@ -5283,69 +5299,64 @@ static float GetNextSpaceWidth(const char *text, int *nextSpaceIndex)
 #if !defined(RAYGUI_STANDALONE)
 // Gui draw texture using raylib DrawTexture
 // Since we are printing line by line (only in ListView context) we don't have to count the amount of line (always one)
-static void GuiDrawListViewLineWithTexture(const char* text, const Texture texture, Rectangle bounds, int alignment, Color tint)
+static void GuiDrawListViewLineWithTexture(const char *text, const Texture texture, Rectangle bounds, int alignment, Color tint)
 {
-  if (!IsTextureValid(texture)) return; // Security check
+    if (!IsTextureValid(texture)) return;    // Security check
 
-  Vector2 textureBoundsPosition = {bounds.x, bounds.y};
-  Vector2 textBoundsPosition = {bounds.x, bounds.y};
-  int textSizeX = GuiGetTextWidth(text);
-  int padding = GuiGetStyle(LISTVIEW, LIST_ITEMS_PADDING);
+    Vector2 textureBoundsPosition = { bounds.x, bounds.y };
+    Vector2 textBoundsPosition = { bounds.x, bounds.y };
+    int textSizeX = GuiGetTextWidth(text);
+    int padding = GuiGetStyle(LISTVIEW, LIST_ITEMS_PADDING);
 
-  int elementLen = texture.width + padding + textSizeX;
+    int elementLen = texture.width + padding + textSizeX;
 
-  // Vertical centering for both texture and text
-  textureBoundsPosition.y = (float)((int)(bounds.y + bounds.height/2 - texture.height/2));
-  textBoundsPosition.y = (float)((int)(bounds.y + bounds.height/2 - GuiGetStyle(DEFAULT, TEXT_SIZE)/2));
+    // Vertical centering for both texture and text
+    textureBoundsPosition.y = (float)((int)(bounds.y + bounds.height/2 - texture.height/2));
+    textBoundsPosition.y = (float)((int)(bounds.y + bounds.height/2 - GuiGetStyle(DEFAULT, TEXT_SIZE)/2));
 
-  switch (alignment)
-  {
-    case TEXT_ALIGN_LEFT:
-      textureBoundsPosition.x = bounds.x;
-      textBoundsPosition.x = bounds.x + texture.width + padding;
-      break;
-    case TEXT_ALIGN_CENTER:
-      textureBoundsPosition.x = (float)((int)(bounds.x + bounds.width/2 - elementLen/2));
-      textBoundsPosition.x = textureBoundsPosition.x + texture.width + padding;
-      break;
-    case TEXT_ALIGN_RIGHT:
-      textureBoundsPosition.x = (float)((int)(bounds.x + bounds.width - elementLen));
-      textBoundsPosition.x = textureBoundsPosition.x + texture.width + padding;
-      break;
-    default: break;
-  }
-
-  // We always use WHITE tint so we don't add filter on the texture
-  DrawTextureV(texture, textureBoundsPosition, WHITE);
-
-  // Draw text glyph by glyph (similar to GuiDrawText)
-  if ((text != NULL) && (text[0] != '\0'))
-  {
-    int lineSize = 0;
-    for (int c = 0; (text[c] != '\0') && (text[c] != '\n') && (text[c] != '\r'); c++, lineSize++){ }
-    float scaleFactor = (float)GuiGetStyle(DEFAULT, TEXT_SIZE)/guiFont.baseSize;
-
-    float textOffsetX = 0.0f;
-    for (int c = 0, codepointSize = 0; c < lineSize; c += codepointSize)
+    switch (alignment)
     {
-      int codepoint = GetCodepointNext(&text[c], &codepointSize);
-      int index = GetGlyphIndex(guiFont, codepoint);
-
-      if (codepoint == 0x3f) codepointSize = 1;
-
-      float glyphWidth = 0;
-      if (guiFont.glyphs[index].advanceX == 0) glyphWidth = ((float)guiFont.recs[index].width*scaleFactor);
-      else glyphWidth = (float)guiFont.glyphs[index].advanceX*scaleFactor;
-
-      if ((codepoint != ' ') && (codepoint != '\t'))
-      {
-        DrawTextCodepoint(guiFont, codepoint, RAYGUI_CLITERAL(Vector2){ textBoundsPosition.x + textOffsetX, textBoundsPosition.y }, (float)GuiGetStyle(DEFAULT, TEXT_SIZE), GuiFade(tint, guiAlpha));
-      }
-
-      if (guiFont.glyphs[index].advanceX == 0) textOffsetX += ((float)guiFont.recs[index].width*scaleFactor + (float)GuiGetStyle(DEFAULT, TEXT_SPACING));
-      else textOffsetX += ((float)guiFont.glyphs[index].advanceX*scaleFactor + (float)GuiGetStyle(DEFAULT, TEXT_SPACING));
+        case TEXT_ALIGN_LEFT:
+            textureBoundsPosition.x = bounds.x;
+            textBoundsPosition.x = bounds.x + texture.width + padding;
+            break;
+        case TEXT_ALIGN_CENTER:
+            textureBoundsPosition.x = (float)((int)(bounds.x + bounds.width/2 - elementLen/2));
+            textBoundsPosition.x = textureBoundsPosition.x + texture.width + padding;
+            break;
+        case TEXT_ALIGN_RIGHT:
+            textureBoundsPosition.x = (float)((int)(bounds.x + bounds.width - elementLen));
+            textBoundsPosition.x = textureBoundsPosition.x + texture.width + padding;
+            break;
+        default: break;
     }
-  }
+
+    DrawTextureV(texture, textureBoundsPosition, WHITE);
+
+    // Draw text glyph by glyph
+    if ((text != NULL) && (text[0] != '\0'))
+    {
+        int lineSize = 0;
+        for (int c = 0; (text[c] != '\0') && (text[c] != '\n') && (text[c] != '\r'); c++, lineSize++){ }
+        float scaleFactor = (float)GuiGetStyle(DEFAULT, TEXT_SIZE)/guiFont.baseSize;
+
+        float textOffsetX = 0.0f;
+        for (int c = 0, codepointSize = 0; c < lineSize; c += codepointSize)
+        {
+            int codepoint = GetCodepointNext(&text[c], &codepointSize);
+            int index = GetGlyphIndex(guiFont, codepoint);
+
+            if (codepoint == 0x3f) codepointSize = 1;
+
+            if ((codepoint != ' ') && (codepoint != '\t'))
+            {
+                DrawTextCodepoint(guiFont, codepoint, RAYGUI_CLITERAL(Vector2){ textBoundsPosition.x + textOffsetX, textBoundsPosition.y }, (float)GuiGetStyle(DEFAULT, TEXT_SIZE), GuiFade(tint, guiAlpha));
+            }
+
+            if (guiFont.glyphs[index].advanceX == 0) textOffsetX += ((float)guiFont.recs[index].width*scaleFactor + (float)GuiGetStyle(DEFAULT, TEXT_SPACING));
+            else textOffsetX += ((float)guiFont.glyphs[index].advanceX*scaleFactor + (float)GuiGetStyle(DEFAULT, TEXT_SPACING));
+        }
+    }
 }
 #endif // RAYGUI_STANDALONE
 

@@ -344,7 +344,7 @@ int main()
     DrawRectangleRec(topleft, LIGHTGRAY);
     GuiLabel((Rectangle){10, 5, 30, 20}, "App");
     searched = GuiTextBox((Rectangle){41, 1, 358, 29}, search, 1024, true);
-    GuiListViewTexture((Rectangle){1, 31, 398, 168}, textures, list, &scroll, &active, NULL);
+    GuiListViewTexture((Rectangle){1, 31, 398, 168}, textures, list, &scroll, &active);
     //GuiListView((Rectangle){1, 31, 398, 168}, list, &scroll, &active);
 
     if (IsKeyPressed(264) && active < datas.count) active++; scroll++;
