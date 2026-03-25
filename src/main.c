@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 #include "raylib.h"
 
@@ -22,8 +23,9 @@ typedef struct {
 typedef struct {
   char* name;
   char* description;
-  char* icons;
+  char* icon;
   char* exec;
+  Texture texture;
   bool terminal;
 } cofi_element_t;
 
@@ -181,6 +183,10 @@ int get_metadata_from_apps(files_t* fda, cofis_t* cda)
          el->terminal = true; 
       }
 
+      if (strcmp(buffer, "Icon") == 0 && el->icon == NULL) {
+        el->icon = strdup(value_buffer); 
+      }
+
       cursor++;
       buffer_index = 0;
       value_buffer_index = 0;
@@ -189,6 +195,53 @@ int get_metadata_from_apps(files_t* fda, cofis_t* cda)
     da_append(cda, el);
     free(text);
   } 
+}
+
+int find_icon(cofis_t* datas)
+{
+  const char* dirs[] = {
+    "/usr/share/pixmaps/",
+    "/usr/share/icons/hicolor/scalable/apps/",
+    "/usr/share/icons/hicolor/128x128/apps/",
+    "/usr/share/icons/hicolor/16x16/apps/",
+    "/usr/share/icons/hicolor/192x192/apps/",
+    "/usr/share/icons/hicolor/22x22/apps/",
+    "/usr/share/icons/hicolor/24x24/apps/",
+    "/usr/share/icons/hicolor/256x256/apps/",
+    "/usr/share/icons/hicolor/32x32/apps/",
+    "/usr/share/icons/hicolor/36x36/apps/",
+    "/usr/share/icons/hicolor/384x384/apps/",
+    "/usr/share/icons/hicolor/48x48/apps/",
+    "/usr/share/icons/hicolor/512x512/apps/",
+    "/usr/share/icons/hicolor/64x64/apps/",
+    "/usr/share/icons/hicolor/72x72/apps/",
+    "/usr/share/icons/hicolor/96x96/apps/",
+  };
+
+  const char* extensions[] = {".svg", ".png"};
+
+  Image im = LoadImage("/home/vinz/git/cofi/assets/placeholder.png");
+  ImageResize(&im, 20, 20);
+  Texture placeholder = LoadTextureFromImage(im);
+
+  for (size_t i = 0; i < datas->count; ++i) {
+    bool found = false;
+    for (int di = 0; di < 16; ++di) {
+      char path[1048];
+      snprintf(path, sizeof(path), "%s%s", dirs[di], datas->items[i]->icon);
+      strcat(path, ".png");
+      struct stat buf;
+      if (stat(path, &buf) == 0) {
+        Image im = LoadImage(path);
+        ImageResize(&im, 20, 20);
+        datas->items[i]->texture = LoadTextureFromImage(im);
+        TraceLog(LOG_INFO, "ICON FOUND : %s\n", path); 
+        found = true;
+      }     
+    }
+    if (!found) 
+      datas->items[i]->texture = placeholder;
+  }
 }
 
 char search[1024] = {0};
@@ -221,6 +274,13 @@ void build_lv_text(cofis_t* datas, char* list)
       strcat(list, ")");
     }
     strcat(list, ";");
+  }
+}
+
+void build_lv_textures(cofis_t* datas, Texture* textures) 
+{
+  for (size_t i = 0; i < datas->count; ++i) {
+    textures[i] = datas->items[i]->texture;
   }
 }
 
@@ -261,12 +321,17 @@ int main()
   strcpy(list, "");
   build_lv_text(&datas, list);
 
+  Texture* textures = calloc(datas.count, sizeof(Texture));
+  find_icon(&datas);
+  build_lv_textures(&datas, textures);
+
   int scroll = 0;
   int active = 0;
 
   GuiSetStyle(LISTVIEW, SCROLLBAR_WIDTH, 10);
   GuiSetStyle(LISTVIEW, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
-
+  GuiSetStyle(LISTVIEW, LIST_ITEMS_PADDING, 5);
+  
   bool close_window = false;
 
   while (!WindowShouldClose() && !close_window)
@@ -279,7 +344,8 @@ int main()
     DrawRectangleRec(topleft, LIGHTGRAY);
     GuiLabel((Rectangle){10, 5, 30, 20}, "App");
     searched = GuiTextBox((Rectangle){41, 1, 358, 29}, search, 1024, true);
-    GuiListView((Rectangle){1, 31, 398, 168}, list, &scroll, &active);
+    GuiListViewTexture((Rectangle){1, 31, 398, 168}, textures, list, &scroll, &active, NULL);
+    //GuiListView((Rectangle){1, 31, 398, 168}, list, &scroll, &active);
 
     if (IsKeyPressed(264) && active < datas.count) active++; scroll++;
     if (IsKeyPressed(265) && active > 0) active--; scroll--;
@@ -289,6 +355,7 @@ int main()
 
     strncpy(list, "", sizeof(list));
     build_lv_text(&datas, list);
+    build_lv_textures(&datas, textures);
 
     if (searched) {
       if (datas.items[active]->terminal) {
@@ -305,6 +372,7 @@ int main()
   CloseWindow();
 
   free(list);
+  free(textures);
 
   for (size_t i = 0; i < applications.count; ++i)
     free(applications.items[i]);
@@ -313,6 +381,7 @@ int main()
   for (size_t i = 0; i < datas.count; ++i) {
     free(datas.items[i]->name); 
     free(datas.items[i]->exec); 
+    free(datas.items[i]->icon);
     if (datas.items[i]->description) 
       free(datas.items[i]->description);
     free(datas.items[i]);
