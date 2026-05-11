@@ -93,7 +93,7 @@ int get_applications_from_dir(const char* path, files_t* fda)
           strcmp(ent->d_name, ".") == 0)
         continue;
       
-      const char* dot = strchr(ent->d_name, '.');
+      const char* dot = strrchr(ent->d_name, '.');
       if (!dot || strcmp(dot, ent->d_name) == 0)
         continue;
 
@@ -150,7 +150,9 @@ int get_metadata_from_apps(files_t* fda, cofis_t* cda)
     while (cursor < text + len) {
       if (*cursor != '=') {
         if (*cursor != '\n')
-          buffer[buffer_index++] = *cursor; 
+          buffer[buffer_index++] = *cursor;
+        else
+          buffer_index = 0;
         cursor++;
         continue;
       } 
@@ -192,7 +194,15 @@ int get_metadata_from_apps(files_t* fda, cofis_t* cda)
       value_buffer_index = 0;
     }
 
-    da_append(cda, el);
+    if (el->name != NULL && el->exec != NULL) {
+      da_append(cda, el);
+    } else {
+      free(el->name);
+      free(el->exec);
+      free(el->description);
+      free(el->icon);
+      free(el);
+    }
     free(text);
   } 
 }
