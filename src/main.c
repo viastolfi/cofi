@@ -53,8 +53,8 @@ int exec_app(char* name)
 
   if (pid == 0) {
     char* cmd = clean_exec(name);
-      
-    char* args[] = {cmd, NULL};
+
+    char* args[] = {"/bin/sh", "-c", cmd, NULL};
 
     execvp(args[0], args);
     perror("execvp failed");
@@ -71,7 +71,7 @@ int exec_terminal_app(char* name)
 
   if (pid == 0) {
     char* cmd = clean_exec(name);
-    char* args[] = {"alacritty", "-e", cmd, NULL};  
+    char* args[] = {"alacritty", "-e", "/bin/sh", "-c", cmd, NULL};
 
     execvp(args[0], args);
     perror("execvp failed");
@@ -149,29 +149,43 @@ int get_metadata_from_apps(files_t* fda, cofis_t* cda)
 
     while (cursor < text + len) {
       if (*cursor != '=') {
-        if (*cursor != '\n')
-          buffer[buffer_index++] = *cursor;
-        else
+        if (*cursor != '\n') {
+          if (buffer_index < (int)sizeof(buffer) - 1)
+            buffer[buffer_index++] = *cursor;
+        } else {
           buffer_index = 0;
+        }
         cursor++;
         continue;
       } 
       buffer[buffer_index] = '\0';
 
       cursor++;
-      char value_buffer[2048];
-      int value_buffer_index = 0;
-      while (*cursor != '\n' && cursor != text + len) 
-        value_buffer[value_buffer_index++] = *cursor++;
-      value_buffer[value_buffer_index] = '\0';
+      char* line_end = cursor;
+      while (line_end < text + len && *line_end != '\n')
+        line_end++;
+      int value_len = (int)(line_end - cursor);
+      char* value_buffer = (char*) malloc(value_len + 1);
+      if (!value_buffer) {
+        free(el->name);
+        free(el->exec);
+        free(el->description);
+        free(el->icon);
+        free(el);
+        free(text);
+        return 1;
+      }
+      memcpy(value_buffer, cursor, value_len);
+      value_buffer[value_len] = '\0';
+      cursor = line_end;
 
       if (strcmp(buffer, "Name") == 0 && el->name == NULL) {
-        el->name = (char*) malloc(value_buffer_index + 1);
+        el->name = (char*) malloc(value_len + 1);
         strcpy(el->name, value_buffer);
       }
       
       if (strcmp(buffer, "Exec") == 0 && el->exec == NULL) {
-        el->exec = (char*) malloc(value_buffer_index + 1); 
+        el->exec = (char*) malloc(value_len + 1); 
         strcpy(el->exec, value_buffer);
       }
 
@@ -189,9 +203,9 @@ int get_metadata_from_apps(files_t* fda, cofis_t* cda)
         el->icon = strdup(value_buffer); 
       }
 
+      free(value_buffer);
       cursor++;
       buffer_index = 0;
-      value_buffer_index = 0;
     }
 
     if (el->name != NULL && el->exec != NULL) {
