@@ -240,6 +240,11 @@ int find_icon(cofis_t* datas)
     "/usr/share/icons/hicolor/64x64/apps/",
     "/usr/share/icons/hicolor/72x72/apps/",
     "/usr/share/icons/hicolor/96x96/apps/",
+    "/usr/share/icons/AdwaitaLegacy/48x48/legacy/",
+    "/usr/share/icons/AdwaitaLegacy/32x32/legacy/",
+    "/usr/share/icons/AdwaitaLegacy/16x16/legacy/",
+    "/usr/share/icons/AdwaitaLegacy/24x24/legacy/",
+    "/usr/share/icons/AdwaitaLegacy/22x22/legacy/",
   };
 
   const char* extensions[] = {".svg", ".png"};
@@ -250,7 +255,8 @@ int find_icon(cofis_t* datas)
 
   for (size_t i = 0; i < datas->count; ++i) {
     bool found = false;
-    for (int di = 0; di < 16; ++di) {
+    // TODO: make this var not hardcoded
+    for (int di = 0; di < 21; ++di) {
       char path[1048];
       snprintf(path, sizeof(path), "%s%s", dirs[di], datas->items[i]->icon);
       strcat(path, ".png");
